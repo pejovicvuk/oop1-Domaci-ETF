@@ -1,0 +1,3 @@
+C:/Users/pejov/CLionProjects/oop1-Domaci-ETF/cmake-build-debug/CMakeFiles/oop1_Domaci_ETF.dir
+C:/Users/pejov/CLionProjects/oop1-Domaci-ETF/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/pejov/CLionProjects/oop1-Domaci-ETF/cmake-build-debug/CMakeFiles/rebuild_cache.dir
