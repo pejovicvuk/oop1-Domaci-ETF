@@ -1,7 +1,10 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <chrono>
 using namespace std;
+
+string currentPrompt = "$";
 
 class Command {
 protected:
@@ -10,32 +13,43 @@ protected:
 public:
     Command(string _option = "", string _argument = "") : option(_option), argument(_argument) {}
 
-    virtual void execute(string& currentPrompt) {}
+    virtual void execute() {}
 
     virtual ~Command() {}
 };
 
 class Prompt : public Command {
-    public:
-        Prompt(string argument) : Command("", argument) {}
+public:
+    Prompt(string argument) : Command("", argument) {}
 
-        void execute(string& currentPrompt) override {
-            if (argument.empty()) {
-                cout << "The 'prompt command requires an argument.\n";
-            } else {
-                currentPrompt = argument;
-                cout << "Prompt updated to: " << currentPrompt << endl;
-            }
+    void execute() override {
+        if (argument.empty()) {
+            cout << "The 'prompt' command requires an argument.\n";
+        } else {
+            currentPrompt = argument;
+            cout << "Prompt updated to: " << currentPrompt << endl;
         }
-
+    }
 };
 
 class Echo : public Command {
 public:
     Echo(string argument) : Command("",argument) {}
 
-    void execute(string& currentPrompt) override {
+    void execute() override {
         cout << "Echo: " << argument << endl;
+    }
+};
+class Time : public Command {
+public:
+    Time() : Command("", "") {}
+
+    void execute() override {
+        auto now = chrono::system_clock::now();
+        time_t currentTime = chrono::system_clock::to_time_t(now);
+        tm localTime = *localtime(&currentTime);
+
+        cout << put_time(&localTime, "%H:%M:%S")<< endl;
     }
 };
 
@@ -45,12 +59,14 @@ unique_ptr<Command> CommandFactory(const string& commandName, const string& opti
         return make_unique<Echo>(argument);
     } else if (commandName == "prompt") {
         return make_unique<Prompt>(argument);
+    } else if (commandName == "time") {
+        return make_unique<Time>();
     }
+
     return nullptr;
 }
 
 int main() {
-    string currentPrompt = "$";
     while (true) {
         cout << currentPrompt;
         string inputLine;
@@ -66,7 +82,6 @@ int main() {
 
         inputStream >> commandName;
 
-        // Option (if present) starts with '-'
         string temp;
         inputStream >> temp;
         if (!temp.empty() && temp[0] == '-') {
@@ -75,7 +90,7 @@ int main() {
         } else {
             getline(inputStream, argument);
             if (!temp.empty()) {
-                argument = temp + (argument.empty() ? "" : " " + argument);
+                argument = temp + (argument.empty() ? "" : "" + argument);
             }
         }
 
@@ -90,7 +105,7 @@ int main() {
 
         unique_ptr<Command> cmd = CommandFactory(commandName, option, argument);
         if (cmd) {
-            cmd->execute(currentPrompt);
+            cmd->execute();
         } else {
             cout << "Unknown or invalid command: " << commandName << endl;
         }
