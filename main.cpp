@@ -99,25 +99,47 @@ public:
 };
 class Time : public Command {
 public:
-    Time() : Command("", "") {}
+    Time(string argument) : Command("",argument) {}
 
     void execute() override {
         auto now = chrono::system_clock::now();
         time_t currentTime = chrono::system_clock::to_time_t(now);
         tm localTime = *localtime(&currentTime);
-
-        cout << put_time(&localTime, "%H:%M:%S")<< endl;
+        string output =  extractInputFromArgument(argument);
+        string second = extractOutputFromArgument(argument);
+        if (second.empty() && output.empty()) {
+            cout << put_time(&localTime, "%H:%M:%S")<< endl;
+        }
+        else if (filesystem::exists(output) && second.empty()) {
+            ofstream outputFile(output);
+            outputFile << put_time(&localTime, "%H:%M:%S");
+            cout << "Time written to " << output << endl;
+        }
+        else {
+            cout << "Error: Unable to open output file " << output << endl;
+        }
     }
 };
 class Date : public Command {
     public:
-    Date() : Command("", "") {}
+    Date(string argument) : Command("", argument) {}
     void execute() override {
         auto now = chrono::system_clock::now();
         time_t currentTime = chrono::system_clock::to_time_t(now);
         tm localTime = *localtime(&currentTime);
-
-        cout << put_time(&localTime, "%Y-%m-%d") << endl;
+        string output =  extractInputFromArgument(argument);
+        string second = extractOutputFromArgument(argument);
+        if (second.empty() && output.empty()) {
+            cout << put_time(&localTime, "%Y-%m-%d")<< endl;
+        }
+        else if (filesystem::exists(output) && second.empty()) {
+            ofstream outputFile(output);
+            outputFile << put_time(&localTime, "%Y-%m-%d");
+            cout << "Date written to " << output << endl;
+        }
+        else {
+            cout << "Error: Unable to open output file " << output << endl;
+        }
     }
 };
 class Touch : public Command {
@@ -172,22 +194,38 @@ class Rm : public Command {
         }
     }
 };
-
+class Wc : public Command {
+    public:
+    Wc(string option, string argument) : Command(option,argument) {}
+    void execute() override {
+        string input =  extractInputFromArgument(argument);
+        string output = extractOutputFromArgument(argument);
+        if (option == "-w") {
+            //ako je input "" ili fajl...
+        } else if (option == "-c") {
+            //ako je output fajl ili konzola...
+        } else {
+            cout << "Error: Invalid option." << endl;
+        }
+    }
+};
 unique_ptr<Command> CommandFactory(const string& commandName, const string& option, const string& argument) {
     if (commandName == "echo") {
         return make_unique<Echo>(argument);
     } else if (commandName == "prompt") {
         return make_unique<Prompt>(argument);
     } else if (commandName == "time") {
-        return make_unique<Time>();
+        return make_unique<Time>(argument);
     } else if (commandName == "date") {
-        return make_unique<Date>();
+        return make_unique<Date>(argument);
     } else if (commandName == "touch") {
         return make_unique<Touch>(argument);
     } else if (commandName == "rm") {
         return make_unique<Rm>(argument);
     } else if (commandName == "truncate") {
         return make_unique<Truncate>(argument);
+    } else if (commandName == "wc") {
+        return make_unique<Wc>(option, argument);
     }
     return nullptr;
 }
