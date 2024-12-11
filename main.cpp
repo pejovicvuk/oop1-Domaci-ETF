@@ -8,33 +8,6 @@
 using namespace std;
 
 string currentPrompt = "$";
-string extractInputFromArgument(const string& input) {
-    regex re(R"(\"(.*)\")");
-    smatch match;
-
-    if (regex_search(input, match, re) && match.size() > 1) {
-        return match[0].str();
-    } else {
-        size_t pos = input.find_first_of(" \t");
-        if (pos != string::npos) {
-            return input.substr(0, pos);
-        } else {
-            return input;
-        }
-    }
-}
-string extractOutputFromArgument(const string& input) {
-    string extractedInput = extractInputFromArgument(input);
-
-    size_t inputEndPos = input.find(extractedInput) + extractedInput.length();
-    if (inputEndPos < input.length()) {
-        size_t outputStartPos = input.find_first_not_of(" \t", inputEndPos);
-        if (outputStartPos != string::npos) {
-            return input.substr(outputStartPos);
-        }
-    }
-    return "";
-}
 
 class Command {
 protected:
@@ -44,6 +17,74 @@ public:
     Command(string _option = "", string _argument = "") : option(_option), argument(_argument) {}
 
     virtual void execute() {}
+
+    string extractInputFromArgument(const string& input) {
+        regex re(R"(\"(.*)\")");
+        smatch match;
+
+        if (regex_search(input, match, re) && match.size() > 1) {
+            return match[0].str();
+        } else {
+            size_t pos = input.find_first_of(" \t");
+            if (pos != string::npos) {
+                return input.substr(0, pos);
+            } else {
+                return input;
+            }
+        }
+    }
+    string extractOutputFromArgument(const string& input) {
+        string extractedInput = extractInputFromArgument(input);
+
+        size_t inputEndPos = input.find(extractedInput) + extractedInput.length();
+        if (inputEndPos < input.length()) {
+            size_t outputStartPos = input.find_first_not_of(" \t", inputEndPos);
+            if (outputStartPos != string::npos) {
+                return input.substr(outputStartPos);
+            }
+        }
+        return "";
+    }
+
+    virtual void OutputToFile(string input, string fileName) {
+        ofstream file(fileName);
+        if (file) {
+            file << input;
+            file.close();
+            cout << "Text written to " << fileName << endl;
+        } else {
+            cout << "Unable to open file " << fileName << endl;
+        }
+    }
+    virtual string FileToString(string _string, string fileName) {
+        if (ifstream file(fileName); file) {
+            _string.assign((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+            file.close();
+            return _string;
+        } else {
+            cout << "Error: Unable to open input file " << fileName << endl;
+            return "";
+        }
+    }
+
+    string GetCurrentTime(const std::string& format) {
+        auto now = std::chrono::system_clock::now();
+        time_t currentTime = std::chrono::system_clock::to_time_t(now);
+        tm localTime = *localtime(&currentTime);
+
+        std::ostringstream oss;
+        oss << std::put_time(&localTime, format.c_str());
+        return oss.str();
+    }
+    int countWords(string input) {
+        istringstream stream(input);
+        string word;
+        int wordCount = 0;
+        while (stream >> word) {
+            wordCount++;
+        }
+        return wordCount;
+    }
 
     virtual ~Command() {}
 };
@@ -69,31 +110,16 @@ public:
         string input = extractInputFromArgument(argument);
         string output = extractOutputFromArgument(argument);
 
-        string textToOutput;
+        string text;
         if (!input.empty() && input[0] == '"') {
-            textToOutput = input.substr(1, input.length() - 2);
+            text = input.substr(1, input.length() - 2);
         } else {
-            ifstream inputFile(input);
-            if (inputFile) {
-                textToOutput.assign((istreambuf_iterator<char>(inputFile)), istreambuf_iterator<char>());
-                inputFile.close();
-            } else {
-                cout << "Error: Unable to open input file " << input << endl;
-                return;
-            }
+            text = FileToString(text, input);
         }
-
         if (!output.empty()) {
-            ofstream outputFile(output);
-            if (outputFile) {
-                outputFile << textToOutput;
-                outputFile.close();
-                cout << "Text written to " << output << endl;
-            } else {
-                cout << "Error: Unable to open output file " << output << endl;
-            }
+            OutputToFile(text, output);
         } else {
-            cout << textToOutput << endl;
+            cout << text << endl;
         }
     }
 };
@@ -102,18 +128,14 @@ public:
     Time(string argument) : Command("",argument) {}
 
     void execute() override {
-        auto now = chrono::system_clock::now();
-        time_t currentTime = chrono::system_clock::to_time_t(now);
-        tm localTime = *localtime(&currentTime);
+        string currentTime = GetCurrentTime("%H:%M:%S");
         string output =  extractInputFromArgument(argument);
         string second = extractOutputFromArgument(argument);
         if (second.empty() && output.empty()) {
-            cout << put_time(&localTime, "%H:%M:%S")<< endl;
+            cout << currentTime << endl;
         }
         else if (filesystem::exists(output) && second.empty()) {
-            ofstream outputFile(output);
-            outputFile << put_time(&localTime, "%H:%M:%S");
-            cout << "Time written to " << output << endl;
+            OutputToFile(currentTime, output);
         }
         else {
             cout << "Error: Unable to open output file " << output << endl;
@@ -124,18 +146,14 @@ class Date : public Command {
     public:
     Date(string argument) : Command("", argument) {}
     void execute() override {
-        auto now = chrono::system_clock::now();
-        time_t currentTime = chrono::system_clock::to_time_t(now);
-        tm localTime = *localtime(&currentTime);
+        string currentTime = GetCurrentTime("%Y-%m-%d");
         string output =  extractInputFromArgument(argument);
         string second = extractOutputFromArgument(argument);
         if (second.empty() && output.empty()) {
-            cout << put_time(&localTime, "%Y-%m-%d")<< endl;
+            cout << currentTime << endl;
         }
         else if (filesystem::exists(output) && second.empty()) {
-            ofstream outputFile(output);
-            outputFile << put_time(&localTime, "%Y-%m-%d");
-            cout << "Date written to " << output << endl;
+            OutputToFile(currentTime, output);
         }
         else {
             cout << "Error: Unable to open output file " << output << endl;
@@ -172,7 +190,7 @@ class Truncate : public Command {
             ofstream ofs;
             ofs.open(argument, ofstream::out | ofstream::trunc);
             ofs.close();
-            cout<< "Contents of " << argument << "have successfully been deleted." << endl;
+            cout<< "Contents of " << argument << " have successfully been deleted." << endl;
         }
         else {
             cout << "File " << argument << " does not exist." << endl;
@@ -194,16 +212,23 @@ class Rm : public Command {
         }
     }
 };
+
 class Wc : public Command {
     public:
     Wc(string option, string argument) : Command(option,argument) {}
     void execute() override {
+        int wordCount = 0;
         string input =  extractInputFromArgument(argument);
         string output = extractOutputFromArgument(argument);
-        if (option == "-w") {
-            //ako je input "" ili fajl...
-        } else if (option == "-c") {
-            //ako je output fajl ili konzola...
+        if (option == "-w" && input[0] == '"' && output.empty()) {
+            wordCount = countWords(input.substr(1, input.length() - 2));
+            cout << wordCount << endl;
+        } else if (option == "-w" && input[0] == '"' && !output.empty()){
+            wordCount = countWords(input.substr(1, input.length() - 2));
+            OutputToFile(to_string(wordCount), output);
+        } else if (option == "-w" && input[0] != '"' && output.empty()) {
+            FileToString( input, input);
+
         } else {
             cout << "Error: Invalid option." << endl;
         }
