@@ -9,42 +9,16 @@ using namespace std;
 
 string currentPrompt = "$";
 
+
 class Command {
 protected:
     string option;
-    string argument;
+    string input;
+    string output;
 public:
-    Command(string _option = "", string _argument = "") : option(_option), argument(_argument) {}
+    Command(string _option = "", string _input = "", string _output = "") : option(_option), input(_input), output(_output) {}
 
     virtual void execute() {}
-
-    string extractInputFromArgument(const string& input) {
-        regex re(R"(\"(.*)\")");
-        smatch match;
-
-        if (regex_search(input, match, re) && match.size() > 1) {
-            return match[0].str();
-        } else {
-            size_t pos = input.find_first_of(" \t");
-            if (pos != string::npos) {
-                return input.substr(0, pos);
-            } else {
-                return input;
-            }
-        }
-    }
-    string extractOutputFromArgument(const string& input) {
-        string extractedInput = extractInputFromArgument(input);
-
-        size_t inputEndPos = input.find(extractedInput) + extractedInput.length();
-        if (inputEndPos < input.length()) {
-            size_t outputStartPos = input.find_first_not_of(" \t", inputEndPos);
-            if (outputStartPos != string::npos) {
-                return input.substr(outputStartPos);
-            }
-        }
-        return "";
-    }
 
     virtual void OutputToFile(string input, string fileName) {
         ofstream file(fileName);
@@ -91,13 +65,13 @@ public:
 
 class Prompt : public Command {
 public:
-    Prompt(string argument) : Command("", argument) {}
+    Prompt(string input) : Command("", input) {}
 
     void execute() override {
-        if (argument.empty()) {
+        if (input.empty()) {
             cout << "The 'prompt' command requires an argument." << endl;
         } else {
-            currentPrompt = argument;
+            currentPrompt = input;
             cout << "Prompt updated to: " << currentPrompt << endl;
         }
     }
@@ -227,35 +201,71 @@ class Wc : public Command {
             wordCount = countWords(input.substr(1, input.length() - 2));
             OutputToFile(to_string(wordCount), output);
         } else if (option == "-w" && input[0] != '"' && output.empty()) {
-            FileToString( input, input);
-
-        } else {
+            input = FileToString( input, input);
+            wordCount = countWords(input);
+            cout << wordCount << endl;
+        } else if (option == "-w" && input[0] != '"' && !output.empty()) {
+            input = FileToString( input, input);
+            wordCount = countWords(input);
+            OutputToFile(to_string(wordCount), output);
+        }
+        else {
             cout << "Error: Invalid option." << endl;
         }
     }
 };
-unique_ptr<Command> CommandFactory(const string& commandName, const string& option, const string& argument) {
+unique_ptr<Command> CommandFactory(const string& commandName, const string& option, const string& input, const string& output) {
     if (commandName == "echo") {
-        return make_unique<Echo>(argument);
+        return make_unique<Echo>(input, output);
     } else if (commandName == "prompt") {
-        return make_unique<Prompt>(argument);
+        return make_unique<Prompt>(input);
     } else if (commandName == "time") {
-        return make_unique<Time>(argument);
+        return make_unique<Time>(output);
     } else if (commandName == "date") {
-        return make_unique<Date>(argument);
+        return make_unique<Date>(output);
     } else if (commandName == "touch") {
-        return make_unique<Touch>(argument);
+        return make_unique<Touch>(input);
     } else if (commandName == "rm") {
-        return make_unique<Rm>(argument);
+        return make_unique<Rm>(input);
     } else if (commandName == "truncate") {
-        return make_unique<Truncate>(argument);
+        return make_unique<Truncate>(input);
     } else if (commandName == "wc") {
-        return make_unique<Wc>(option, argument);
+        return make_unique<Wc>(option, input, output);
     }
     return nullptr;
 }
 
+class ErrorHandler {
+public:
+    bool ValidateCommand(const string& command);
+// private:
+    bool validateCommandName(const string& token, string& error);
+    bool validateCommandOption(const string& token, string& error) {
+        
+    }
+    bool validateInput(const string& token, string& error);
+    bool validateOutput(const string& token, string& error);
+
+    vector<string> tokenize(const string& command) {
+        regex wordRegex(R"((\"[^\"]*\")|\S+)");
+        vector<string> tokens;
+        sregex_iterator iter(command.begin(), command.end(), wordRegex), end;
+        while (iter != end) {
+            tokens.push_back(iter->str());
+            iter++;
+        }
+        if (tokens.size() > 4) {
+            cerr << "Error: Too many arguments." << endl;
+            return {};
+        }
+        return tokens;
+    }
+    void displayError(const string& command, const vector<int>& errorPositions, const string& errorMessage);
+
+};
+
 int main() {
+    ErrorHandler errorHandler;
     while (true) {
         cout << currentPrompt;
         string inputLine;
@@ -263,34 +273,8 @@ int main() {
 
         if (inputLine.empty()) continue;
 
-        string commandName;
-        string option;
-        string argument;
+        vector<string> tokens = errorHandler.tokenize(inputLine);
 
-        istringstream inputStream(inputLine);
-
-        inputStream >> commandName;
-
-        string temp;
-        inputStream >> temp;
-        if (!temp.empty() && temp[0] == '-') {
-            option = temp;
-            getline(inputStream, argument);
-        } else {
-            getline(inputStream, argument);
-            if (!temp.empty()) {
-                argument = temp + (argument.empty() ? "" : "" + argument);
-            }
-        }
-
-        if (!argument.empty() && argument[0] == ' ') {
-            argument.erase(0, 1);
-        }
-
-        if (commandName == "exit") {
-            cout << "Exiting the command prompt." << endl;
-            break;
-        }
 
         unique_ptr<Command> cmd = CommandFactory(commandName, option, argument);
         if (cmd) {
