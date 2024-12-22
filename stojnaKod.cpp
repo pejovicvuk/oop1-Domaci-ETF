@@ -1,7 +1,9 @@
+#include <chrono>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <regex>
+#include <thread>
 using namespace std;
 
 class ErrorHandler {
@@ -11,36 +13,74 @@ public:
 
         string errorMessage;
         vector<int> errorPositions;
+        string combinedMarker(command.length(), ' ');
+        vector<string> errorMessages;
+        int errorCounter = 0;
 
-        //proveravamo ime komande
-        // Validate commandName
+        //provera commandName
         if (!validateCommandName(tokens[0], errorMessage, errorPositions)) {
             for (int& pos : errorPositions) {
                 pos++;
             }
-            displayError(command, errorPositions, errorMessage);
-            return false;
+            for (int pos : errorPositions) {
+                if (pos >= 0) {
+                    combinedMarker[pos] = '^';
+                }
+            }
+            errorMessages.push_back(errorMessage);
+            errorCounter++;
         }
-        // Validate commandOption
+
+        // provera commandOption
         errorMessage.clear();
         errorPositions.clear();
         if (!validateCommandOption(tokens[1], errorMessage, errorPositions)) {
+            size_t position = command.find(tokens[1]) + 1; // ovo plus 1 je za $, stavi ga posle +promptLenght
             for (int& pos : errorPositions) {
-                pos += tokens[0].length() + 2; // Adjust for "$ " and space after commandName
+                pos += position;
             }
-            displayError(command, errorPositions, errorMessage);
-            return false;
+            for (int pos : errorPositions) {
+                if (pos >= 0 ) {
+                    combinedMarker[pos] = '^';
+                }
+            }
+            errorMessages.push_back(errorMessage);
+            errorCounter++;
         }
 
-        // Additional validations for input and output can go here...
+        errorMessage.clear();
+        errorPositions.clear();
+        if (!validateInput(tokens[2], errorMessage, errorPositions)) {
+            size_t position = command.find(tokens[2]) + 1; // ovo plus 1 je za $, stavi ga posle +promptLenght
+            for (int& pos : errorPositions) {
+                pos += position;
+            }
+            for (int pos : errorPositions) {
+                if (pos >= 0 ) {
+                    combinedMarker[pos] = '^';
+                }
+            }
+            errorMessages.push_back(errorMessage);
+            errorCounter++;
+        }
+        errorMessage.clear();
+        errorPositions.clear();
+        //validate output
 
-        return true; // Command is valid if all checks pass
-
+        if (errorCounter > 0) {
+            cerr << combinedMarker << endl;
+            for (const string& msg : errorMessages) {
+                cerr << msg << endl;
+            }
+            return false;
+        }
+        return true;
     }
+
 
 private:
     bool validateCommandName(const string& token, string& error, vector<int>& errorPositions) {
-        errorPositions.clear(); // Ensure error positions are reset
+        errorPositions.clear();
 
         for (size_t i = 0; i < token.length(); ++i) {
             if (!isalpha(token[i])) {
@@ -60,25 +100,44 @@ private:
         if (token.empty()) {
             return true;
         }
-        if (token[0] != '-') {
-            errorPositions.push_back(0);
-            error = "Invalid Command Option: Must start with '-'.";
-            return false;
-        }
+        // if (token[0] != '-') {
+        //     errorPositions.push_back(0);
+        //     error = "Invalid Command Option: Must start with '-'.";
+        //     return false;
+        // }
         for (size_t i = 1; i < token.length(); ++i) {
             if (!isalpha(token[i])) {
                 errorPositions.push_back(i);
             }
         }
         if (!errorPositions.empty()) {
-            error = "Invalid Command Option: Contains non-alphabetic characters.";
+            error = "Invalid Command Option: Only alphabetic characters are allowed.";
             return false;
         }
         return true;
     }
 
-    bool validateInput(const string& token, string& error);
-    bool validateOutput(const string& token, string& error);
+    bool validateInput(const string& token, string& error, vector<int>& errorPositions) {
+        errorPositions.clear();
+
+        for (size_t i = 0; i < token.length(); ++i) {
+            if (!isalpha(token[i]) && token[i] != '.') {
+                errorPositions.push_back(i);
+            }
+        }
+        if (!errorPositions.empty()) {
+            error = "Invalid Input Syntax: Only alphabetic characters and '.' are allowed.";
+            return false;
+        }
+        return true;
+    };
+    bool validateOutput(const string& token, string& error, vector<int>& errorPositions) {
+        errorPositions.clear();
+
+        for (size_t i = 0; i < token.length(); ++i) {
+            //etc etc
+        }
+    }
 
     vector<string> tokenize(const string& command) {
         regex wordRegex(R"((\"[^\"]*\")|\S+)");
@@ -93,7 +152,7 @@ private:
 
         if (tokensRaw.size() > 4) {
             cerr << "Error: Too many arguments." << endl;
-            return {};
+            return {}; //sta da radim ovde kada je error u tokenize funkciji
         }
 
         if (!tokensRaw.empty()) tokens[0] = tokensRaw[0];
@@ -101,10 +160,18 @@ private:
         for (size_t i = 1; i < tokensRaw.size(); ++i) {
             if (tokensRaw[i][0] == '-') {
                 tokens[1] = tokensRaw[i];
-            } else if (tokensRaw[i][0] == '<') {
+            } else if (tokensRaw[i][0] == '>') {
                 tokens[3] = tokensRaw[i];
             } else {
                 tokens[2] = tokensRaw[i];
+            }
+        }
+        if (tokensRaw.size() == 4) {
+            if (tokens[1] != "-") {
+                cerr << "Invalid Command Option: Must start with '-'." << endl;
+            }
+            if (tokens[3] != ">") {
+                cerr << "Invalid Output: Must start with '>'." << endl;
             }
         }
         return tokens;
@@ -112,7 +179,6 @@ private:
 
 
     void displayError(const string& command, const vector<int>& errorPositions, const string& errorMessage) {
-        cerr << command << endl;
 
         string marker(command.length(), ' ');
         for (int pos : errorPositions) {
@@ -129,20 +195,18 @@ int main() {
     ErrorHandler error_handler;
 
     while (true) {
-        cout << "$" << flush; // Command prompt
         string inputLine;
+        cout << "$";
         getline(cin, inputLine);
 
         if (inputLine == "exit") {
-            return 0; // Exit the program
+            return 0;
         }
 
-        // Validate the command
         if (!error_handler.ValidateCommand(inputLine)) {
-            cout << "Validation failed. Please correct the command and try again.\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             continue;
         }
-
         cout << "Command is valid.\n";
     }
 }
