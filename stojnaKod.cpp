@@ -10,6 +10,7 @@ class ErrorHandler {
 public:
     bool ValidateCommand(const string& command) {
         vector<string> tokens = tokenize(command);
+        if (tokens.empty()) return false;
 
         string errorMessage;
         vector<int> errorPositions;
@@ -65,8 +66,19 @@ public:
         }
         errorMessage.clear();
         errorPositions.clear();
-        //validate output
-
+        if (!validateOutput(tokens[3], errorMessage, errorPositions)) {
+            size_t position = command.find(tokens[3]) + 1; // ovo plus 1 je za $, stavi ga posle +promptLenght
+            for (int& pos : errorPositions) {
+                pos += position;
+            }
+            for (int pos : errorPositions) {
+                if (pos >= 0 ) {
+                    combinedMarker[pos] = '^';
+                }
+            }
+            errorMessages.push_back(errorMessage);
+            errorCounter++;
+        }
         if (errorCounter > 0) {
             cerr << combinedMarker << endl;
             for (const string& msg : errorMessages) {
@@ -120,27 +132,50 @@ private:
     bool validateInput(const string& token, string& error, vector<int>& errorPositions) {
         errorPositions.clear();
 
-        for (size_t i = 0; i < token.length(); ++i) {
-            if (!isalpha(token[i]) && token[i] != '.') {
+        if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
+            return true;
+        }
+        static const string invalidChars = "<>:\"/\\|?*-";
+        for (size_t i = 0; i < token.size(); ++i) {
+            if (invalidChars.find(token[i]) != string::npos) {
                 errorPositions.push_back(i);
             }
         }
+        if (token.size() > 255) {
+            error = "Invalid Input Syntax: File name exceeds the maximum allowed length (255 characters).";
+            return false;
+        }
         if (!errorPositions.empty()) {
-            error = "Invalid Input Syntax: Only alphabetic characters and '.' are allowed.";
+            error = "Invalid Input Syntax: File name contains invalid characters.";
             return false;
         }
         return true;
-    };
+    }
+
     bool validateOutput(const string& token, string& error, vector<int>& errorPositions) {
         errorPositions.clear();
 
-        for (size_t i = 0; i < token.length(); ++i) {
-            //etc etc
+
+        static const string invalidChars = "<>:\"/\\|?*-";
+        for (size_t i = 1; i < token.size(); ++i) {
+            if (invalidChars.find(token[i]) != string::npos) {
+                errorPositions.push_back(i);
+            }
         }
+        if (token.size() > 255) {
+            error = "Invalid Output Syntax: File name exceeds the maximum allowed length (255 characters).";
+            return false;
+        }
+        if (!errorPositions.empty()) {
+            error = "Invalid Output Syntax: File name contains invalid characters.";
+            return false;
+        }
+        return true;
     }
 
     vector<string> tokenize(const string& command) {
-        regex wordRegex(R"((\"[^\"]*\")|\S+)");
+        regex wordRegex(R"((\S*\"[^\"]*\"\S*)|\S+)");
+
         vector<string> tokensRaw;
         vector<string> tokens(4, "");
 
@@ -155,10 +190,23 @@ private:
             return {}; //sta da radim ovde kada je error u tokenize funkciji
         }
 
-        if (!tokensRaw.empty()) tokens[0] = tokensRaw[0];
-
+        if (!tokensRaw.empty()) tokens[0] = tokensRaw[0]; //prvi token je uvek ime komande
+        // if (tokensRaw[1][0] == '-') { //ako opcija postoji, ona je uvek drugi token
+        //     tokens[1] = tokensRaw[1];
+        //     if (tokensRaw.size() == 3) {
+        //         tokens[2] = tokensRaw[2];
+        //     }
+        // }
+        // //ako ne postoji opcija
+        // else if (tokensRaw.size() == 2) {
+        //     if (tokens[1][0] == '>') tokens[4] = tokensRaw[1];
+        //     else tokens[3]= tokensRaw[1];
+        // } else if (tokensRaw.size() == 3) {
+        //     tokens[1] = tokensRaw[1];
+        //     tokens[2] = tokensRaw[2];
+        // }
         for (size_t i = 1; i < tokensRaw.size(); ++i) {
-            if (tokensRaw[i][0] == '-') {
+            if (tokensRaw[i][0] == '-' && i == 1) {
                 tokens[1] = tokensRaw[i];
             } else if (tokensRaw[i][0] == '>') {
                 tokens[3] = tokensRaw[i];
@@ -166,12 +214,15 @@ private:
                 tokens[2] = tokensRaw[i];
             }
         }
+        //ne treba ovako
         if (tokensRaw.size() == 4) {
-            if (tokens[1] != "-") {
+            if (tokens[1][0] != '-') {
                 cerr << "Invalid Command Option: Must start with '-'." << endl;
+                return {};
             }
-            if (tokens[3] != ">") {
+            if (tokens[3][0] != '>') {
                 cerr << "Invalid Output: Must start with '>'." << endl;
+                return {};
             }
         }
         return tokens;
