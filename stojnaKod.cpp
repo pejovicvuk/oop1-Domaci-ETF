@@ -214,14 +214,14 @@ private:
                 tokens[2] = tokensRaw[i];
             }
         }
-        //ne treba ovako
-        if (tokensRaw.size() == 4) {
-            if (tokens[1][0] != '-') {
-                cerr << "Invalid Command Option: Must start with '-'." << endl;
-                return {};
-            }
-            if (tokens[3][0] != '>') {
-                cerr << "Invalid Output: Must start with '>'." << endl;
+        for (const string& raw : tokensRaw) {
+            if (find(tokens.begin(), tokens.end(), raw) == tokens.end()) {
+                size_t position = command.find(raw);
+                vector<int> errorPositions(raw.size());
+                for (size_t i = 0; i < raw.size(); ++i) {
+                    errorPositions[i] = static_cast<int>(position + i + 1);
+                }
+                displayError(command, errorPositions, "Error: Token '" + raw + "' was not processed correctly.");
                 return {};
             }
         }
