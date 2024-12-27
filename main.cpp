@@ -76,6 +76,10 @@ class ErrorHandler {
     vector<int> errorPositions;
     set<string> errorMessages;
 public:
+     void clear() {
+        errorPositions.clear();
+        errorMessages.clear();
+    }
     vector<string> tokenize(const string& command) {
         regex wordRegex(R"((\S*\"[^\"]*\"\S*)|\S+)");
 
@@ -593,6 +597,7 @@ int main() {
     ErrorHandler error_handler;
     vector <string> tokens(4);
     while (true) {
+        error_handler.clear();
         string inputLine;
         this_thread::sleep_for(chrono::milliseconds(200));
         cout << currentPrompt;
