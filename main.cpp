@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <regex>
 #include <thread>
+#include <set>
 using namespace std;
 
 string currentPrompt = "$";
@@ -27,7 +28,7 @@ public:
             file.close();
             cout << "Text written to " << fileName << endl;
         } else {
-            cout << "Unable to open file " << fileName << endl;
+            cerr << "Unable to open file " << fileName << endl;
         }
     }
     virtual string FileToString(string _string, string fileName) {
@@ -36,7 +37,7 @@ public:
             file.close();
             return _string;
         } else {
-            cout << "Error: Unable to open input file " << fileName << endl;
+            cerr << "Error: Unable to open input file " << fileName << endl;
             return "";
         }
     }
@@ -59,10 +60,21 @@ public:
         }
         return wordCount;
     }
+    int countChars(string input) {
+        int count = 0;
+        for (char c : input) {
+            if (!isspace(c)) {
+                count++;
+            }
+        }
+        return count;
+    }
 
     virtual ~Command() {}
 };
 class ErrorHandler {
+    vector<int> errorPositions;
+    set<string> errorMessages;
 public:
     vector<string> tokenize(const string& command) {
         regex wordRegex(R"((\S*\"[^\"]*\"\S*)|\S+)");
@@ -78,7 +90,7 @@ public:
 
         if (tokensRaw.size() > 4) {
             cerr << "Error: Too many arguments." << endl;
-            return {}; //sta da radim ovde kada je error u tokenize funkciji
+            return {};
         }
 
         if (!tokensRaw.empty()) tokens[0] = tokensRaw[0]; //prvi token je uvek ime komande
@@ -94,12 +106,11 @@ public:
         for (const string& raw : tokensRaw) {
             if (find(tokens.begin(), tokens.end(), raw) == tokens.end()) {
                 size_t position = command.find(raw);
-                vector<int> errorPositions(raw.size());
                 for (size_t i = 0; i < raw.size(); ++i) {
-                    errorPositions[i] = static_cast<int>(position + i + 1);
+                    errorPositions.push_back(static_cast<int>(position + i));
                 }
-                displayError(command, errorPositions, "Error: Token '" + raw + "' was not processed correctly.");
-                return {};
+                errorMessages.insert("Error: Token '" + raw + "' was not processed correctly.");
+                // return {};
             }
         }
         // brisanje > iz outputa
@@ -124,12 +135,9 @@ public:
         if (tokens.empty()) return false;
 
         string errorMessage;
-        vector<int> errorPositions;
         string combinedMarker(command.length(), ' ');
-        vector<string> errorMessages;
         int errorCounter = 0;
 
-        //provera commandName
         if (!validateCommandName(tokens[0], errorMessage, errorPositions)) {
             for (int& pos : errorPositions) {
                 pos++;
@@ -139,10 +147,9 @@ public:
                     combinedMarker[pos] = '^';
                 }
             }
-            errorMessages.push_back(errorMessage);
+            errorMessages.insert(errorMessage);
             errorCounter++;
         }
-        // provera commandOption
         errorMessage.clear();
         errorPositions.clear();
         if (!validateCommandOption(tokens[1], errorMessage, errorPositions)) {
@@ -155,10 +162,9 @@ public:
                     combinedMarker[pos] = '^';
                 }
             }
-            errorMessages.push_back(errorMessage);
+            errorMessages.insert(errorMessage);
             errorCounter++;
         }
-        //provera inputa
         errorMessage.clear();
         errorPositions.clear();
         if (!validateInput(tokens[2], errorMessage, errorPositions)) {
@@ -171,7 +177,7 @@ public:
                     combinedMarker[pos] = '^';
                 }
             }
-            errorMessages.push_back(errorMessage);
+            errorMessages.insert(errorMessage);
             errorCounter++;
         }
         errorMessage.clear();
@@ -186,7 +192,7 @@ public:
                     combinedMarker[pos] = '^';
                 }
             }
-            errorMessages.push_back(errorMessage);
+            errorMessages.insert(errorMessage);
             errorCounter++;
         }
         if (errorCounter > 0) {
@@ -200,7 +206,6 @@ public:
     }
 private:
     bool validateCommandName(const string& token, string& error, vector<int>& errorPositions) {
-        errorPositions.clear();
 
         for (size_t i = 0; i < token.length(); ++i) {
             if (!isalpha(token[i])) {
@@ -215,16 +220,9 @@ private:
     }
 
     bool validateCommandOption(const string& token, string& error, vector<int>& errorPositions) {
-        errorPositions.clear();
-
         if (token.empty()) {
             return true;
         }
-        // if (token[0] != '-') {
-        //     errorPositions.push_back(0);
-        //     error = "Invalid Command Option: Must start with '-'.";
-        //     return false;
-        // }
         for (size_t i = 1; i < token.length(); ++i) {
             if (!isalpha(token[i])) {
                 errorPositions.push_back(i);
@@ -238,8 +236,6 @@ private:
     }
 
     bool validateInput(const string& token, string& error, vector<int>& errorPositions) {
-        errorPositions.clear();
-
         if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
             return true;
         }
@@ -261,9 +257,6 @@ private:
     }
 
     bool validateOutput(const string& token, string& error, vector<int>& errorPositions) {
-        errorPositions.clear();
-
-
         static const string invalidChars = "<>:\"/\\|?*-";
         for (size_t i = 1; i < token.size(); ++i) {
             if (invalidChars.find(token[i]) != string::npos) {
@@ -401,6 +394,7 @@ class Wc : public Command {
     Wc(string option, string input, string output) : Command(option,input, output) {}
     void execute() override {
         int wordCount = 0;
+        int charCount = 0;
         if (option == "-w" && input[0] == '"' && output.empty()) {
             wordCount = countWords(input.substr(1, input.length() - 2));
             cout << wordCount << endl;
@@ -409,15 +403,35 @@ class Wc : public Command {
             OutputToFile(to_string(wordCount), output);
         } else if (option == "-w" && input[0] != '"' && output.empty()) {
             FileToString( input, input);
-
-        } else {
-            cout << "Error: Invalid option." << endl;
+            wordCount = countWords(input.substr(1, input.length() - 2));
+            cout << wordCount << endl;
+        } else  if (option == "-w" && input[0] != '"' && !output.empty()){
+            FileToString( input, input);
+            wordCount = countWords(input.substr(1, input.length() - 2));
+            OutputToFile(to_string(wordCount), input);
+        }
+        else if (option == "-c" && input[0] == '"' && output.empty()) {
+            charCount = countChars(input.substr(1, input.length() - 2));
+            cout << charCount << endl;
+        } else if (option == "-c" && input[0] == '"' && !output.empty()){
+            charCount = countChars(input.substr(1, input.length() - 2));
+            OutputToFile(to_string(charCount), output);
+        } else if (option == "-c" && input[0] != '"' && output.empty()) {
+            FileToString( input, input);
+            charCount = countChars(input.substr(1, input.length() - 2));
+            cout << charCount << endl;
+        } else  if (option == "-c" && input[0] != '"' && !output.empty()){
+            FileToString( input, input);
+            charCount = countChars(input.substr(1, input.length() - 2));
+            OutputToFile(to_string(charCount), input);
         }
     }
 };
-unique_ptr<Command> CommandFactory(const string& commandName, const string& option, const string& input, const string& output) {
-    string command = commandName + " " + option + " " + input + " " + output;
-
+class Head : public Command {
+public:
+    Head(const string& option, const string &input, const string &output) : Command(option, input, output) {}
+};
+unique_ptr<Command> CommandFactory(const string& command, const string& commandName, const string& option, const string& input, const string& output) {
     if (commandName == "echo") {
         if (!option.empty()) {
             size_t position = command.find(option);
@@ -429,6 +443,7 @@ unique_ptr<Command> CommandFactory(const string& commandName, const string& opti
             ErrorHandler::displayError(command, errorPositions, "Command Echo does not allow an option.");
             return nullptr;
         }
+        if (input.empty()) cerr << "Error: No file name provided." << endl;
         return make_unique<Echo>(input, output);
 
     } else if (commandName == "prompt") {
@@ -499,6 +514,15 @@ unique_ptr<Command> CommandFactory(const string& commandName, const string& opti
                 ErrorHandler::displayError(command, errorPositions, "Command Touch requires a filename without quotes.");
                 return nullptr;
             }
+            if (input.empty()) {
+                size_t position = command.find("touch");
+                vector<int> errorPositions(5); // Length of "touch"
+                for (size_t i = 0; i < 5; ++i) {
+                    errorPositions[i] = static_cast<int>(position + i);
+                }
+                ErrorHandler::displayError(command, errorPositions, "Error: No file name provided.");
+                return nullptr;
+            }
             return make_unique<Touch>(input);
         } else if (commandName == "rm") {
             if (!option.empty() || !output.empty()) {
@@ -521,11 +545,12 @@ unique_ptr<Command> CommandFactory(const string& commandName, const string& opti
                 ErrorHandler::displayError(command, errorPositions, "Command Rm requires a filename without quotes.");
                 return nullptr;
             }
+            if (input.empty()) cerr << "Error: No file name provided." << endl;
             return make_unique<Rm>(input);
         } else if (commandName == "truncate") {
             if (!option.empty() || !output.empty()) {
                 string invalidArgument = !option.empty() ? option : output;
-                size_t position = command.find(invalidArgument);
+                size_t position = command.find(invalidArgument);                //ovaj deo koda se ponavlja za svaku komandu, napravi funkciju
                 vector<int> errorPositions(invalidArgument.length());
                 for (size_t i = 0; i < invalidArgument.length(); ++i) {
                     errorPositions[i] = static_cast<int>(position + i);
@@ -543,8 +568,22 @@ unique_ptr<Command> CommandFactory(const string& commandName, const string& opti
                 ErrorHandler::displayError(command, errorPositions, "Command Truncate requires a filename without quotes.");
                 return nullptr;
             }
+            if (input.empty()) cerr << "Error: No file name provided." << endl;
             return make_unique<Truncate>(input);
         } else if (commandName == "wc") {
+            if (option.empty()) {
+                cerr << "Error: No option provided." << endl;
+            }
+            else if (option != "-w" && option != "-c") {
+                size_t position = command.find(output);
+                vector<int> errorPositions(input.length());
+                for (size_t i = 0; i < input.length(); ++i) {
+                    errorPositions[i] = static_cast<int>(position + i);
+                }
+                ErrorHandler::displayError(command, errorPositions, "Error: Unrecognized option .");
+                return nullptr;
+            }
+            if (input.empty()) cerr << "Error: No file name provided." << endl;
             return make_unique<Wc>(option, input, output);
         }
     cerr << "Unknown command: " << commandName << endl;
@@ -568,7 +607,7 @@ int main() {
         } else {
             tokens = error_handler.tokenize(inputLine);
         }
-        unique_ptr<Command> cmd = CommandFactory(tokens[0], tokens[1], tokens[2], tokens[3]);
+        unique_ptr<Command> cmd = CommandFactory(inputLine, tokens[0], tokens[1], tokens[2], tokens[3]);
         if (cmd) {
             cmd->execute();
         }
