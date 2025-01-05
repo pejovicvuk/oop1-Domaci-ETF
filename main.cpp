@@ -28,7 +28,7 @@ public:
             file.close();
             cout << "Text written to " << fileName << endl;
         } else {
-            cerr << "Unable to open file " << fileName << endl;
+            cerr << "Unable to open output file " << fileName << endl;
         }
     }
     virtual string FileToString(string _string, string fileName) {
@@ -107,16 +107,23 @@ public:
                 tokens[2] = tokensRaw[i];
             }
         }
-        for (const string& raw : tokensRaw) {
-            if (find(tokens.begin(), tokens.end(), raw) == tokens.end()) {
-                size_t position = command.find(raw);
-                for (size_t i = 0; i < raw.size(); ++i) {
-                    errorPositions.push_back(static_cast<int>(position + i));
-                }
-                errorMessages.insert("Error: Token '" + raw + "' was not processed correctly.");
-                // return {};
-            }
-        }
+
+         //provera viska inputa
+         vector<string> assignedTokens = {tokens[0], tokens[1], tokens[2], tokens[3]};
+         string errorMessage;
+
+         for (const string& token : tokensRaw) {
+             if (find(assignedTokens.begin(), assignedTokens.end(), token) == assignedTokens.end()) {
+                 if (token[0] == '-') {
+                     cerr << "Error: Extra option detected: " << endl;
+                 } else if (token[0] == '>') {
+                     cerr << "Error: Extra output detected: " << endl;
+                 } else {
+                     cerr << "Error: Extra input detected: " << endl;
+                 }
+                 return {};
+             }
+         }
         // brisanje > iz outputa
         if (!tokens[3].empty()) {
             tokens[3].erase(0, 1);
@@ -155,7 +162,6 @@ public:
             errorCounter++;
         }
         errorMessage.clear();
-        errorPositions.clear();
         if (!validateCommandOption(tokens[1], errorMessage, errorPositions)) {
             size_t position = command.find(tokens[1]) + currentPrompt.length();
             for (int& pos : errorPositions) {
@@ -170,7 +176,6 @@ public:
             errorCounter++;
         }
         errorMessage.clear();
-        errorPositions.clear();
         if (!validateInput(tokens[2], errorMessage, errorPositions)) {
             size_t position = command.find(tokens[2]) + currentPrompt.length();
             for (int& pos : errorPositions) {
@@ -185,7 +190,6 @@ public:
             errorCounter++;
         }
         errorMessage.clear();
-        errorPositions.clear();
         if (!validateOutput(tokens[3], errorMessage, errorPositions)) {
             size_t position = command.find(tokens[3]) + currentPrompt.length();
             for (int& pos : errorPositions) {
@@ -210,13 +214,14 @@ public:
     }
 private:
     bool validateCommandName(const string& token, string& error, vector<int>& errorPositions) {
-
+        vector<int> localErrorPositions;
         for (size_t i = 0; i < token.length(); ++i) {
             if (!isalpha(token[i])) {
-                errorPositions.push_back(i);
+                localErrorPositions.push_back(i);
             }
         }
-        if (!errorPositions.empty()) {
+        if (!localErrorPositions.empty()) {
+            errorPositions = localErrorPositions;
             error = "Invalid Command Name: Only alphabetic characters are allowed.";
             return false;
         }
@@ -224,36 +229,40 @@ private:
     }
 
     bool validateCommandOption(const string& token, string& error, vector<int>& errorPositions) {
-        if (token.empty()) {
-            return true;
-        }
-        for (size_t i = 1; i < token.length(); ++i) {
-            if (!isalpha(token[i])) {
-                errorPositions.push_back(i);
-            }
-        }
-        if (!errorPositions.empty()) {
-            error = "Invalid Command Option: Only alphabetic characters are allowed.";
-            return false;
-        }
+        // vector<int> localErrorPositions;
+        // if (token.empty()) {
+        //     return true;
+        // }
+        // for (size_t i = 1; i < token.length(); ++i) {
+        //     if (!isalpha(token[i])) {
+        //         localErrorPositions.push_back(i);
+        //     }
+        // }
+        // if (!localErrorPositions.empty()) {
+        //     errorPositions = localErrorPositions;
+        //     error = "Invalid Command Option: Only alphabetic characters are allowed.";
+        //     return false;
+        // }
         return true;
     }
 
     bool validateInput(const string& token, string& error, vector<int>& errorPositions) {
+        vector<int> localErrorPositions;
         if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
             return true;
         }
         static const string invalidChars = "<>:\"/\\|?*-";
         for (size_t i = 0; i < token.size(); ++i) {
             if (invalidChars.find(token[i]) != string::npos) {
-                errorPositions.push_back(i);
+                localErrorPositions.push_back(i);
             }
         }
         if (token.size() > 255) {
             error = "Invalid Input Syntax: File name exceeds the maximum allowed length (255 characters).";
             return false;
         }
-        if (!errorPositions.empty()) {
+        if (!localErrorPositions.empty()) {
+            errorPositions = localErrorPositions;
             error = "Invalid Input Syntax: File name contains invalid characters.";
             return false;
         }
@@ -261,24 +270,25 @@ private:
     }
 
     bool validateOutput(const string& token, string& error, vector<int>& errorPositions) {
+        vector<int> localErrorPositions;
         static const string invalidChars = "<>:\"/\\|?*-";
         for (size_t i = 1; i < token.size(); ++i) {
             if (invalidChars.find(token[i]) != string::npos) {
-                errorPositions.push_back(i);
+                localErrorPositions.push_back(i);
             }
         }
         if (token.size() > 255) {
             error = "Invalid Output Syntax: File name exceeds the maximum allowed length (255 characters).";
             return false;
         }
-        if (!errorPositions.empty()) {
+        if (!localErrorPositions.empty()) {
+            errorPositions = localErrorPositions;
             error = "Invalid Output Syntax: File name contains invalid characters.";
             return false;
         }
         return true;
     }
 };
-
 class Prompt : public Command {
 public:
     Prompt(string input) : Command("", input, "") {}
@@ -433,8 +443,74 @@ class Wc : public Command {
 };
 class Head : public Command {
 public:
-    Head(const string& option, const string &input, const string &output) : Command(option, input, output) {}
+    Head(const string& option, const string& input, const string& output) : Command(option, input, output) {}
+
+    void execute() override {
+        int count = 0;
+        if (option.length() > 1 && option[0] == '-') {
+            try {
+                count = stoi(option.substr(1));
+                if (count <= 0) {
+                    cerr << "Error: Option must specify a positive number of lines." << endl;
+                    return;
+                }
+            } catch (const std::invalid_argument&) {
+                cerr << "Error: Invalid number format in option." << endl;
+                return;
+            } catch (const std::out_of_range&) {
+                cerr << "Error: Number in option is out of range." << endl;
+                return;
+            }
+        } else {
+            cerr << "Error: Invalid option format. Expected '-<number>'." << endl;
+            return;
+        }
+
+        vector<string> lines;
+        if (!input.empty() && input[0] == '"') {
+            if (input.back() == '"') {
+                string text = input.substr(1, input.length() - 2);
+
+                istringstream stream(text);
+                string line;
+                while (getline(stream, line) && static_cast<int>(lines.size()) < count) {
+                    lines.push_back(line);
+                }
+            } else {
+                cerr << "Error: Mismatched quotes in input." << endl;
+                return;
+            }
+        } else {
+            ifstream inputFile(input);
+            if (!inputFile) {
+                cerr << "Error: Unable to open input file " << input << endl;
+                return;
+            }
+            string line;
+            while (getline(inputFile, line) && static_cast<int>(lines.size()) < count) {
+                lines.push_back(line);
+            }
+            inputFile.close();
+        }
+
+        if (output.empty()) {
+            for (const string& l : lines) {
+                cout << l << endl;
+            }
+        } else {
+            ofstream outputFile(output);
+            if (!outputFile) {
+                cerr << "Error: Unable to open output file " << output << endl;
+                return;
+            }
+            for (const string& l : lines) {
+                outputFile << l << endl;
+            }
+            outputFile.close();
+        }
+    }
 };
+
 unique_ptr<Command> CommandFactory(const string& command, const string& commandName, const string& option, const string& input, const string& output) {
     if (commandName == "echo") {
         if (!option.empty()) {
@@ -447,7 +523,10 @@ unique_ptr<Command> CommandFactory(const string& command, const string& commandN
             ErrorHandler::displayError(command, errorPositions, "Command Echo does not allow an option.");
             return nullptr;
         }
-        if (input.empty()) cerr << "Error: No file name provided." << endl;
+        if (input.empty()) {
+            cerr << "Error: No file name provided." << endl;
+            return nullptr;
+        }
         return make_unique<Echo>(input, output);
 
     } else if (commandName == "prompt") {
@@ -519,12 +598,7 @@ unique_ptr<Command> CommandFactory(const string& command, const string& commandN
                 return nullptr;
             }
             if (input.empty()) {
-                size_t position = command.find("touch");
-                vector<int> errorPositions(5); // Length of "touch"
-                for (size_t i = 0; i < 5; ++i) {
-                    errorPositions[i] = static_cast<int>(position + i);
-                }
-                ErrorHandler::displayError(command, errorPositions, "Error: No file name provided.");
+                cerr << "Error: No file name provided." << endl;
                 return nullptr;
             }
             return make_unique<Touch>(input);
@@ -549,7 +623,10 @@ unique_ptr<Command> CommandFactory(const string& command, const string& commandN
                 ErrorHandler::displayError(command, errorPositions, "Command Rm requires a filename without quotes.");
                 return nullptr;
             }
-            if (input.empty()) cerr << "Error: No file name provided." << endl;
+            if (input.empty()) {
+                cerr << "Error: No file name provided." << endl;
+                return nullptr;
+            }
             return make_unique<Rm>(input);
         } else if (commandName == "truncate") {
             if (!option.empty() || !output.empty()) {
@@ -572,7 +649,10 @@ unique_ptr<Command> CommandFactory(const string& command, const string& commandN
                 ErrorHandler::displayError(command, errorPositions, "Command Truncate requires a filename without quotes.");
                 return nullptr;
             }
-            if (input.empty()) cerr << "Error: No file name provided." << endl;
+            if (input.empty()) {
+                cerr << "Error: No file name provided." << endl;
+                return nullptr;
+            }
             return make_unique<Truncate>(input);
         } else if (commandName == "wc") {
             if (option.empty()) {
@@ -587,8 +667,21 @@ unique_ptr<Command> CommandFactory(const string& command, const string& commandN
                 ErrorHandler::displayError(command, errorPositions, "Error: Unrecognized option .");
                 return nullptr;
             }
-            if (input.empty()) cerr << "Error: No file name provided." << endl;
+            if (input.empty()) {
+                cerr << "Error: No file name provided." << endl;
+                return nullptr;
+            }
             return make_unique<Wc>(option, input, output);
+        } else if (commandName == "head") {
+            if (option.empty()) {
+                cerr << "Error: No option provided." << endl;
+                return nullptr;
+            }
+            if (input.empty()) {
+                cerr << "Error: No input provided." << endl;
+                return nullptr;
+            }
+            return make_unique<Head>(option, input, output);
         }
     cerr << "Unknown command: " << commandName << endl;
     return nullptr;
